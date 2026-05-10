@@ -45,7 +45,7 @@ if st.sidebar.button('Generate Forecast'):
     with st.spinner(f'Generating forecast for {forecast_days} days...'):
         # Determine the start date for the future forecast
         last_test_date = test_original.index.max()
-        future_forecast_start_date = last_test_date + pd.Timedelta(days=1)
+        last_test_date = pd.to_datetime(last_test_date)  future_forecast_start_date = last_test_date + pd.Timedelta(days=1)
 
         # Create a date range for these future business days
         future_dates = pd.date_range(start=future_forecast_start_date, periods=forecast_days, freq='B')
