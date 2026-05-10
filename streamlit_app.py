@@ -3,129 +3,124 @@ import pandas as pd
 import joblib
 import matplotlib.pyplot as plt
 
-# ------------------------------------------------
-# Page Config
-# ------------------------------------------------
+# ---------------------------------------
+# Streamlit Page
+# ---------------------------------------
 st.set_page_config(layout="wide")
 
 st.title("Gold Price Forecast using ARIMA Model")
 st.write("Forecast future gold prices using ARIMA.")
 
-# ------------------------------------------------
+# ---------------------------------------
 # Load Model
-# ------------------------------------------------
+# ---------------------------------------
 @st.cache_resource
 def load_model():
-    model = joblib.load("arima_gold_price_model.joblib")
-    return model
+    return joblib.load("arima_gold_price_model.joblib")
 
-# ------------------------------------------------
-# Load CSV Data
-# ------------------------------------------------
+# ---------------------------------------
+# Load Data
+# ---------------------------------------
 @st.cache_data
 def load_data():
 
-    train_df = pd.read_csv(
-        "train_original.csv",
-        parse_dates=True
-    )
-
-    test_df = pd.read_csv(
-        "test_original.csv",
-        parse_dates=True
-    )
+    # Read CSV files
+    train_df = pd.read_csv("train_original.csv")
+    test_df = pd.read_csv("test_original.csv")
 
     return train_df, test_df
 
-# ------------------------------------------------
+# ---------------------------------------
 # Load Resources
-# ------------------------------------------------
+# ---------------------------------------
 model_train = load_model()
 
 train_original, test_original = load_data()
 
-# ------------------------------------------------
-# Fix Date Columns
-# ------------------------------------------------
-# Convert first column to datetime safely
-train_original[train_original.columns[0]] = pd.to_datetime(
-    train_original[train_original.columns[0]],
+# ---------------------------------------
+# Fix Date Column
+# ---------------------------------------
+# Remove unnamed column if exists
+if "Unnamed: 0" in train_original.columns:
+    train_original.rename(
+        columns={"Unnamed: 0": "Date"},
+        inplace=True
+    )
+
+if "Unnamed: 0" in test_original.columns:
+    test_original.rename(
+        columns={"Unnamed: 0": "Date"},
+        inplace=True
+    )
+
+# Convert Date column
+train_original["Date"] = pd.to_datetime(
+    train_original["Date"],
     errors="coerce"
 )
 
-test_original[test_original.columns[0]] = pd.to_datetime(
-    test_original[test_original.columns[0]],
+test_original["Date"] = pd.to_datetime(
+    test_original["Date"],
     errors="coerce"
 )
 
-# Remove invalid rows
+# Remove bad rows
 train_original.dropna(inplace=True)
 test_original.dropna(inplace=True)
 
-# Set first column as index
-train_original.set_index(
-    train_original.columns[0],
-    inplace=True
-)
+# Set date index
+train_original.set_index("Date", inplace=True)
+test_original.set_index("Date", inplace=True)
 
-test_original.set_index(
-    test_original.columns[0],
-    inplace=True
-)
-
-# ------------------------------------------------
+# ---------------------------------------
 # Select Gold Price Column
-# ------------------------------------------------
+# ---------------------------------------
 train_values = train_original.iloc[:, 0]
-
 test_values = test_original.iloc[:, 0]
 
-# ------------------------------------------------
+# ---------------------------------------
 # Sidebar
-# ------------------------------------------------
+# ---------------------------------------
 st.sidebar.header("Forecast Settings")
 
 forecast_days = st.sidebar.slider(
     "Forecast Days",
-    min_value=1,
-    max_value=365,
-    value=60
+    1,
+    365,
+    60
 )
 
-# ------------------------------------------------
-# Forecast Button
-# ------------------------------------------------
+# ---------------------------------------
+# Forecast
+# ---------------------------------------
 if st.sidebar.button("Generate Forecast"):
 
     with st.spinner("Generating forecast..."):
 
-        # Last date
-        last_test_date = test_original.index.max()
-
-        # Future start date
-        future_start_date = last_test_date + pd.Timedelta(days=1)
-
-        # Future business dates
-        future_dates = pd.date_range(
-            start=future_start_date,
-            periods=forecast_days,
-            freq="B"
-        )
-
-        # Forecast
+        # Forecast future values
         forecast_values = model_train.forecast(
             steps=forecast_days
         )
 
-        # Create Series
+        # Last available date
+        last_date = test_original.index.max()
+
+        # Future dates
+        future_dates = pd.date_range(
+            start=last_date + pd.Timedelta(days=1),
+            periods=forecast_days,
+            freq="B"
+        )
+
+        # Forecast series
         future_forecast = pd.Series(
             forecast_values,
             index=future_dates
         )
 
-    # ------------------------------------------------
+    # ---------------------------------------
     # Forecast Table
-    # ------------------------------------------------
+    # ---------------------------------------
     st.subheader("Forecast Results")
 
     forecast_df = pd.DataFrame({
@@ -135,9 +130,9 @@ if st.sidebar.button("Generate Forecast"):
 
     st.dataframe(forecast_df)
 
-    # ------------------------------------------------
-    # Visualization
-    # ------------------------------------------------
+    # ---------------------------------------
+    # Plot
+    # ---------------------------------------
     st.subheader("Forecast Visualization")
 
     fig, ax = plt.subplots(figsize=(15, 7))
@@ -177,4 +172,3 @@ if st.sidebar.button("Generate Forecast"):
 
 else:
     st.info("Select forecast days and click Generate Forecast.")
-    
