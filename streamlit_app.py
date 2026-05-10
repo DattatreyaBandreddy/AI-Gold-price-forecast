@@ -1,46 +1,60 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
 import joblib
 import matplotlib.pyplot as plt
 
-# ---------------------------------------
-# Streamlit Page
-# ---------------------------------------
-st.set_page_config(layout="wide")
+# ---------------------------------------------------
+# PAGE SETTINGS
+# ---------------------------------------------------
+st.set_page_config(
+    page_title="Gold Price Forecast",
+    layout="wide"
+)
 
 st.title("Gold Price Forecast using ARIMA Model")
-st.write("Forecast future gold prices using ARIMA.")
+st.write("Forecast future gold prices using Time Series Forecasting.")
 
-# ---------------------------------------
-# Load Model
-# ---------------------------------------
+# ---------------------------------------------------
+# LOAD MODEL
+# ---------------------------------------------------
 @st.cache_resource
 def load_model():
-    return joblib.load("arima_gold_price_model.joblib")
+    try:
+        model = joblib.load("arima_gold_price_model.joblib")
+        return model
 
-# ---------------------------------------
-# Load Data
-# ---------------------------------------
+    except Exception as e:
+        st.error(f"Error loading model: {e}")
+        st.stop()
+
+# ---------------------------------------------------
+# LOAD DATA
+# ---------------------------------------------------
 @st.cache_data
 def load_data():
 
-    # Read CSV files
-    train_df = pd.read_csv("train_original.csv")
-    test_df = pd.read_csv("test_original.csv")
+    try:
+        train_df = pd.read_csv("train_original.csv")
+        test_df = pd.read_csv("test_original.csv")
 
-    return train_df, test_df
+        return train_df, test_df
 
-# ---------------------------------------
-# Load Resources
-# ---------------------------------------
+    except Exception as e:
+        st.error(f"Error loading CSV files: {e}")
+        st.stop()
+
+# ---------------------------------------------------
+# LOAD FILES
+# ---------------------------------------------------
 model_train = load_model()
 
 train_original, test_original = load_data()
 
-# ---------------------------------------
-# Fix Date Column
-# ---------------------------------------
-# Remove unnamed column if exists
+# ---------------------------------------------------
+# FIX DATE COLUMNS
+# ---------------------------------------------------
+# Rename unnamed columns
 if "Unnamed: 0" in train_original.columns:
     train_original.rename(
         columns={"Unnamed: 0": "Date"},
@@ -53,7 +67,7 @@ if "Unnamed: 0" in test_original.columns:
         inplace=True
     )
 
-# Convert Date column
+# Convert to datetime
 train_original["Date"] = pd.to_datetime(
     train_original["Date"],
     errors="coerce"
@@ -64,111 +78,139 @@ test_original["Date"] = pd.to_datetime(
     errors="coerce"
 )
 
-# Remove bad rows
+# Remove invalid rows
 train_original.dropna(inplace=True)
 test_original.dropna(inplace=True)
 
-# Set date index
+# Set index
 train_original.set_index("Date", inplace=True)
 test_original.set_index("Date", inplace=True)
 
-# ---------------------------------------
-# Select Gold Price Column
-# ---------------------------------------
+# ---------------------------------------------------
+# SELECT TARGET COLUMN
+# ---------------------------------------------------
 train_values = train_original.iloc[:, 0]
 test_values = test_original.iloc[:, 0]
 
-# ---------------------------------------
-# Sidebar
-# ---------------------------------------
+# ---------------------------------------------------
+# SIDEBAR
+# ---------------------------------------------------
 st.sidebar.header("Forecast Settings")
 
 forecast_days = st.sidebar.slider(
-    "Forecast Days",
-    1,
-    365,
-    60
+    "Select Number of Forecast Days",
+    min_value=1,
+    max_value=365,
+    value=60
 )
 
-# ---------------------------------------
-# Forecast
-# ---------------------------------------
+# ---------------------------------------------------
+# GENERATE FORECAST
+# ---------------------------------------------------
 if st.sidebar.button("Generate Forecast"):
 
     with st.spinner("Generating forecast..."):
 
-        # Forecast future values
-        forecast_values = model_train.forecast(
-            steps=forecast_days
-        )
+        try:
 
-        # Last available date
-        last_date = test_original.index.max()
+            # Forecast future values
+            forecast_values = model_train.forecast(
+                steps=forecast_days
+            )
 
-        # Future dates
-        future_dates = pd.date_range(
-            start=last_date + pd.Timedelta(days=1),
-            periods=forecast_days,
-            freq="B"
-        )
+            # Convert forecast to numpy array
+            forecast_values = np.array(
+                forecast_values
+            ).flatten()
 
-        # Forecast series
-        future_forecast = pd.Series(
-            forecast_values,
-            index=future_dates
-        )
+            # Last available date
+            last_date = test_original.index.max()
 
-    # ---------------------------------------
-    # Forecast Table
-    # ---------------------------------------
-    st.subheader("Forecast Results")
+            # Future business dates
+            future_dates = pd.date_range(
+                start=last_date + pd.Timedelta(days=1),
+                periods=forecast_days,
+                freq="B"
+            )
 
-    forecast_df = pd.DataFrame({
-        "Date": future_forecast.index,
-        "Predicted Gold Price": future_forecast.values
-    })
+            # Create forecast series
+            future_forecast = pd.Series(
+                forecast_values,
+                index=future_dates
+            )
 
-    st.dataframe(forecast_df)
+            # ---------------------------------------------------
+            # SHOW FORECAST TABLE
+            # ---------------------------------------------------
+            st.subheader("Forecast Results")
 
-    # ---------------------------------------
-    # Plot
-    # ---------------------------------------
-    st.subheader("Forecast Visualization")
+            forecast_df = pd.DataFrame({
+                "Date": future_dates,
+                "Predicted Gold Price": forecast_values
+            })
 
-    fig, ax = plt.subplots(figsize=(15, 7))
+            st.dataframe(
+                forecast_df,
+                use_container_width=True
+            )
 
-    ax.plot(
-        train_values.index,
-        train_values.values,
-        label="Training Data"
-    )
+            # ---------------------------------------------------
+            # PLOT GRAPH
+            # ---------------------------------------------------
+            st.subheader("Forecast Visualization")
 
-    ax.plot(
-        test_values.index,
-        test_values.values,
-        label="Test Data"
-    )
+            fig, ax = plt.subplots(
+                figsize=(16, 8)
+            )
 
-    ax.plot(
-        future_forecast.index,
-        future_forecast.values,
-        linestyle="--",
-        label="Future Forecast"
-    )
+            # Training data
+            ax.plot(
+                train_values.index,
+                train_values.values,
+                label="Training Data"
+            )
 
-    ax.set_title("Gold Price Forecast")
+            # Test data
+            ax.plot(
+                test_values.index,
+                test_values.values,
+                label="Test Data"
+            )
 
-    ax.set_xlabel("Date")
+            # Forecast
+            ax.plot(
+                future_forecast.index,
+                future_forecast.values,
+                linestyle="--",
+                linewidth=2,
+                label="Future Forecast"
+            )
 
-    ax.set_ylabel("Gold Price")
+            ax.set_title(
+                "Gold Price Forecast using ARIMA"
+            )
 
-    ax.legend()
+            ax.set_xlabel("Date")
 
-    ax.grid(True)
+            ax.set_ylabel("Gold Price")
 
-    st.pyplot(fig)
+            ax.legend()
 
-    st.success("Forecast generated successfully!")
+            ax.grid(True)
+
+            st.pyplot(fig)
+
+            # ---------------------------------------------------
+            # SUCCESS MESSAGE
+            # ---------------------------------------------------
+            st.success(
+                "Forecast generated successfully!"
+            )
+
+        except Exception as e:
+            st.error(f"Forecast Error: {e}")
 
 else:
-    st.info("Select forecast days and click Generate Forecast.")
+    st.info(
+        "Select forecast days and click Generate Forecast."
+    )
